@@ -1,0 +1,269 @@
+--- router/router.c.orig	2009-10-22 10:39:41.000000000 -0600
++++ router/router.c	2009-10-22 10:44:11.000000000 -0600
+@@ -154,7 +154,7 @@
+     c = strchr(user, '@');
+     if(c != NULL) *c = '\0';
+ 
+-    if(strcmp(user, name->domain) != 0 && !aci_check(comp->r->aci, "bind", user)) {
++    if(strcmp(user, jid_full(name)) != 0 && !aci_check(comp->r->aci, "bind", user)) {
+         log_write(comp->r->log, LOG_NOTICE, "[%s, port=%d] tried to bind '%s', but their username (%s) is not permitted to bind other names", comp->ip, comp->port, name->domain, user);
+         nad_set_attr(nad, 0, -1, "name", NULL, 0);
+         nad_set_attr(nad, 0, -1, "error", "403", 3);
+@@ -164,8 +164,8 @@
+         return;
+     }
+ 
+-    if(xhash_get(comp->r->routes, name->domain) != NULL) {
+-        log_write(comp->r->log, LOG_NOTICE, "[%s, port=%d] tried to bind '%s', but it's already bound", comp->ip, comp->port, name->domain);
++    if(xhash_get(comp->r->routes, jid_full(name)) != NULL) {
++        log_write(comp->r->log, LOG_NOTICE, "[%s, port=%d] tried to bind '%s', but it's already bound", comp->ip, comp->port, jid_full(name));
+         nad_set_attr(nad, 0, -1, "name", NULL, 0);
+         nad_set_attr(nad, 0, -1, "error", "409", 3);
+         sx_nad_write(comp->s, nad);
+@@ -175,7 +175,7 @@
+     }
+ 
+     for(alias = comp->r->aliases; alias != NULL; alias = alias->next)
+-        if(strcmp(alias->name, name->domain) == 0) {
++        if(strcmp(alias->name, jid_full(name)) == 0) {
+             log_write(comp->r->log, LOG_NOTICE, "[%s, port=%d] tried to bind '%s', but that name is aliased", comp->ip, comp->port);
+             nad_set_attr(nad, 0, -1, "name", NULL, 0);
+             nad_set_attr(nad, 0, -1, "error", "409", 3);
+@@ -188,7 +188,7 @@
+     /* default route */
+     if(nad_find_elem(nad, 0, NAD_ENS(nad, 0), "default", 1) >= 0) {
+         if(!aci_check(comp->r->aci, "default-route", user)) {
+-            log_write(comp->r->log, LOG_NOTICE, "[%s, port=%d] tried to bind '%s' as the default route, but their username (%s) is not permitted to set a default route", comp->ip, comp->port, name->domain, user);
++            log_write(comp->r->log, LOG_NOTICE, "[%s, port=%d] tried to bind '%s' as the default route, but their username (%s) is not permitted to set a default route", comp->ip, comp->port, jid_full(name), user);
+             nad_set_attr(nad, 0, -1, "name", NULL, 0);
+             nad_set_attr(nad, 0, -1, "error", "403", 3);
+             sx_nad_write(comp->s, nad);
+@@ -198,7 +198,7 @@
+         }
+ 
+         if(comp->r->default_route != NULL) {
+-            log_write(comp->r->log, LOG_NOTICE, "[%s, port=%d] tried to bind '%s' as the default route, but one already exists", comp->ip, comp->port, name->domain);
++            log_write(comp->r->log, LOG_NOTICE, "[%s, port=%d] tried to bind '%s' as the default route, but one already exists", comp->ip, comp->port, jid_full(name));
+             nad_set_attr(nad, 0, -1, "name", NULL, 0);
+             nad_set_attr(nad, 0, -1, "error", "409", 3);
+             sx_nad_write(comp->s, nad);
+@@ -206,15 +206,15 @@
+             return;
+         }
+ 
+-        log_write(comp->r->log, LOG_NOTICE, "[%s] set as default route", name->domain);
++        log_write(comp->r->log, LOG_NOTICE, "[%s] set as default route", jid_full(name));
+ 
+-        comp->r->default_route = strdup(name->domain);
++        comp->r->default_route = strdup(jid_full(name));
+     }
+ 
+     /* log sinks */
+     if(nad_find_elem(nad, 0, NAD_ENS(nad, 0), "log", 1) >= 0) {
+         if(!aci_check(comp->r->aci, "log", user)) {
+-            log_write(comp->r->log, LOG_NOTICE, "[%s, port=%d] tried to bind '%s' as a log sink, but their username (%s) is not permitted to do this", comp->ip, comp->port, name->domain, user);
++            log_write(comp->r->log, LOG_NOTICE, "[%s, port=%d] tried to bind '%s' as a log sink, but their username (%s) is not permitted to do this", comp->ip, comp->port, jid_full(name), user);
+             nad_set_attr(nad, 0, -1, "name", NULL, 0);
+             nad_set_attr(nad, 0, -1, "error", "403", 3);
+             sx_nad_write(comp->s, nad);
+@@ -223,34 +223,34 @@
+             return;
+         }
+ 
+-        log_write(comp->r->log, LOG_NOTICE, "[%s] set as log sink", name->domain);
++        log_write(comp->r->log, LOG_NOTICE, "[%s] set as log sink", jid_full(name));
+ 
+-        xhash_put(comp->r->log_sinks, pstrdup(xhash_pool(comp->r->log_sinks), name->domain), (void *) comp);
++        xhash_put(comp->r->log_sinks, pstrdup(xhash_pool(comp->r->log_sinks), jid_full(name)), (void *) comp);
+     }
+ 
+     free(user);
+ 
+-    xhash_put(comp->r->routes, pstrdup(xhash_pool(comp->r->routes), name->domain), (void *) comp);
+-    xhash_put(comp->routes, pstrdup(xhash_pool(comp->routes), name->domain), (void *) comp);
++    xhash_put(comp->r->routes, pstrdup(xhash_pool(comp->r->routes), jid_full(name)), (void *) comp);
++    xhash_put(comp->routes, pstrdup(xhash_pool(comp->routes), jid_full(name)), (void *) comp);
+ 
+-    log_write(comp->r->log, LOG_NOTICE, "[%s] online (bound to %s, port %d)", name->domain, comp->ip, comp->port);
++    log_write(comp->r->log, LOG_NOTICE, "[%s] online (bound to %s, port %d)", jid_full(name), comp->ip, comp->port);
+ 
+     nad_set_attr(nad, 0, -1, "name", NULL, 0);
+     sx_nad_write(comp->s, nad);
+ 
+     /* advertise name */
+-    _router_advertise(comp->r, name->domain, comp, 0);
++    _router_advertise(comp->r, jid_full(name), comp, 0);
+ 
+     /* tell the new component about everyone else */
+     xhash_walk(comp->r->routes, _router_advertise_reverse, (void *) comp);
+ 
+     /* bind aliases */
+     for(alias = comp->r->aliases; alias != NULL; alias = alias->next) {
+-        if(strcmp(alias->target, name->domain) == 0) {
++        if(strcmp(alias->target, jid_full(name)) == 0) {
+             xhash_put(comp->r->routes, pstrdup(xhash_pool(comp->r->routes), alias->name), (void *) comp);
+             xhash_put(comp->routes, pstrdup(xhash_pool(comp->r->routes), alias->name), (void *) comp);
+             
+-            log_write(comp->r->log, LOG_NOTICE, "[%s] online (alias of '%s', bound to %s, port %d)", alias->name, name->domain, comp->ip, comp->port);
++            log_write(comp->r->log, LOG_NOTICE, "[%s] online (alias of '%s', bound to %s, port %d)", alias->name, jid_full(name), comp->ip, comp->port);
+ 
+             /* advertise name */
+             _router_advertise(comp->r, alias->name, comp, 0);
+@@ -273,8 +273,8 @@
+         return;
+     }
+ 
+-    if(xhash_get(comp->routes, name->domain) == NULL) {
+-        log_write(comp->r->log, LOG_NOTICE, "[%s, port=%d] tried to unbind '%s', but it's not bound to this component", comp->ip, comp->port, name->domain);
++    if(xhash_get(comp->routes, jid_full(name)) == NULL) {
++        log_write(comp->r->log, LOG_NOTICE, "[%s, port=%d] tried to unbind '%s', but it's not bound to this component", comp->ip, comp->port, jid_full(name));
+         nad_set_attr(nad, 0, -1, "name", NULL, 0);
+         nad_set_attr(nad, 0, -1, "error", "404", 3);
+         sx_nad_write(comp->s, nad);
+@@ -282,23 +282,23 @@
+         return;
+     }
+ 
+-    xhash_zap(comp->r->log_sinks, name->domain);
+-    xhash_zap(comp->r->routes, name->domain);
+-    xhash_zap(comp->routes, name->domain);
++    xhash_zap(comp->r->log_sinks, jid_full(name));
++    xhash_zap(comp->r->routes, jid_full(name));
++    xhash_zap(comp->routes, jid_full(name));
+ 
+-    if(comp->r->default_route != NULL && strcmp(comp->r->default_route, name->domain) == 0) {
+-        log_write(comp->r->log, LOG_NOTICE, "[%s] default route offline", name->domain);
++    if(comp->r->default_route != NULL && strcmp(comp->r->default_route, jid_full(name)) == 0) {
++        log_write(comp->r->log, LOG_NOTICE, "[%s] default route offline", jid_full(name));
+         free(comp->r->default_route);
+         comp->r->default_route = NULL;
+     }
+ 
+-    log_write(comp->r->log, LOG_NOTICE, "[%s] offline", name->domain);
++    log_write(comp->r->log, LOG_NOTICE, "[%s] offline", jid_full(name));
+ 
+     nad_set_attr(nad, 0, -1, "name", NULL, 0);
+     sx_nad_write(comp->s, nad);
+ 
+     /* deadvertise name */
+-    _router_advertise(comp->r, name->domain, comp, 1);
++    _router_advertise(comp->r, jid_full(name), comp, 1);
+ 
+     jid_free(name);
+ }
+@@ -376,21 +376,21 @@
+             return;
+         }
+         
+-        log_debug(ZONE, "unicast route from %s to %s", from->domain, to->domain);
++        log_debug(ZONE, "unicast route from %s to %s", jid_full(from), jid_full(to));
+ 
+         /* check the from */
+-        if(xhash_get(comp->routes, from->domain) == NULL) {
+-            log_write(comp->r->log, LOG_NOTICE, "[%s, port=%d] tried to send a packet from '%s', but that name is not bound to this component", comp->ip, comp->port, from->domain);
++        if(xhash_get(comp->routes, jid_full(from)) == NULL) {
++            log_write(comp->r->log, LOG_NOTICE, "[%s, port=%d] tried to send a packet from '%s', but that name is not bound to this component", comp->ip, comp->port, jid_full(from));
+             nad_set_attr(nad, 0, -1, "error", "401", 3);
+             _router_comp_write(comp, nad);
+             return;
+         }
+ 
+         /* find a target */
+-        target = xhash_get(comp->r->routes, to->domain);
++        target = xhash_get(comp->r->routes, jid_full(to));
+         if(target == NULL) {
+-            if(comp->r->default_route != NULL && strcmp(from->domain, comp->r->default_route) == 0) {
+-                log_debug(ZONE, "%s is unbound, bouncing", from->domain);
++            if(comp->r->default_route != NULL && strcmp(jid_full(from), comp->r->default_route) == 0) {
++                log_debug(ZONE, "%s is unbound, bouncing", jid_full(from));
+                 nad_set_attr(nad, 0, -1, "error", "404", 3);
+                 _router_comp_write(comp, nad);
+                 return;
+@@ -399,7 +399,7 @@
+         }
+ 
+         if(target == NULL) {
+-            log_debug(ZONE, "%s is unbound, and no default route, bouncing", to->domain);
++            log_debug(ZONE, "%s is unbound, and no default route, bouncing", jid_full(to));
+             nad_set_attr(nad, 0, -1, "error", "404", 3);
+             _router_comp_write(comp, nad);
+             return;
+@@ -421,7 +421,7 @@
+         }
+ 
+         /* push it out */
+-        log_debug(ZONE, "writing route for '%s' to %s, port %d", to->domain, target->ip, target->port);
++        log_debug(ZONE, "writing route for '%s' to %s, port %d", jid_full(to), target->ip, target->port);
+ 
+         _router_comp_write(target, nad);
+ 
+@@ -437,11 +437,11 @@
+             return;
+         }
+         
+-        log_debug(ZONE, "broadcast route from %s", from->domain);
++        log_debug(ZONE, "broadcast route from %s", jid_full(from));
+ 
+         /* check the from */
+-        if(xhash_get(comp->routes, from->domain) == NULL) {
+-            log_write(comp->r->log, LOG_NOTICE, "[%s, port=%d] tried to send a packet from '%s', but that name is not bound to this component", comp->ip, comp->port, from->domain);
++        if(xhash_get(comp->routes, jid_full(from)) == NULL) {
++            log_write(comp->r->log, LOG_NOTICE, "[%s, port=%d] tried to send a packet from '%s', but that name is not bound to this component", comp->ip, comp->port, jid_full(from));
+             nad_set_attr(nad, 0, -1, "error", "401", 3);
+             _router_comp_write(comp, nad);
+             return;
+@@ -751,8 +751,8 @@
+ 
+                 nad_wrap_elem(nad, 0, ns, "route");
+ 
+-                nad_set_attr(nad, 0, -1, "to", to->domain, 0);
+-                nad_set_attr(nad, 0, -1, "from", from->domain, 0);
++                nad_set_attr(nad, 0, -1, "to", jid_full(to), 0);
++                nad_set_attr(nad, 0, -1, "from", jid_full(from), 0);
+             }
+ 
+             /* top element must be router scoped */
+--- sm/pkt.c.orig	2009-04-27 03:05:13.000000000 -0600
++++ sm/pkt.c	2009-10-22 10:55:28.000000000 -0600
+@@ -373,7 +373,7 @@
+ 
+     if(pkt->rto != NULL)
+         jid_free(pkt->rto);
+-    pkt->rto = jid_new(pkt->to->domain, -1);
++    pkt->rto = jid_new(jid_full(pkt->to), -1);
+ 
+     if(pkt->rto == NULL) {
+         log_debug(ZONE, "invalid to address on packet, unable to route");
+@@ -381,7 +381,9 @@
+         return;
+     }
+ 
+-    nad_set_attr(pkt->nad, 0, -1, "to", pkt->rto->domain, 0);
++    if (pkt->rto->node != 0 && strlen(pkt->rto->node) > 0)
++        nad_set_attr(pkt->nad, 0, -1, "to", pkt->rto->domain, 0);
++    else nad_set_attr(pkt->nad, 0, -1, "to", jid_full(pkt->rto), 0);
+ 
+     if(pkt->rfrom != NULL)
+         jid_free(pkt->rfrom);
+--- sm/mod_disco.c.orig	2009-10-22 11:03:19.000000000 -0600
++++ sm/mod_disco.c	2009-10-22 11:04:12.000000000 -0600
+@@ -303,7 +303,7 @@
+     service_t svc;
+ 
+     /* it has to come from the service itself - don't want any old user messing with the table */
+-    if(pkt->from->node[0] != '\0' || pkt->from->resource[0] != '\0')
++    if(pkt->from->node[0] != '\0')
+     {
+         log_debug(ZONE, "disco response from %s, not allowed", jid_full(pkt->from));
+         return -stanza_err_NOT_ALLOWED;
+--- s2s/in.c.orig	2009-10-22 13:50:10.000000000 -0600
++++ s2s/in.c	2009-10-22 13:51:01.000000000 -0600
+@@ -569,7 +569,7 @@
+ 
+     nad_wrap_elem(nad, 0, ns, "route");
+ 
+-    nad_set_attr(nad, 0, -1, "to", to->domain, 0);
++    nad_set_attr(nad, 0, -1, "to", jid_full(to), 0);
+     nad_set_attr(nad, 0, -1, "from", in->s2s->id, 0);   /* route is from s2s, not packet source */
+ 
+     log_debug(ZONE, "sending packet to %s", to->domain);

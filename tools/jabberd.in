@@ -1,0 +1,116 @@
+#!/bin/bash
+
+Bin="@bindir@"
+VERSION="@VERSION@"
+config_dir="@sysconfdir@"
+config="${config_dir}/jabberd.cfg"
+declare -A configs
+debug=0
+daemon=0
+shutdown=0
+pids=""
+
+while [ "$1" != "" ]; do
+	if [ "$1" == "-D" ]; then
+		debug=1
+	elif [ "$1" == "-b" ]; then
+		daemon=1
+	elif [ "$1" == "-c" ]; then
+		config="$2"
+		shift
+	else
+		echo "$0 - jabberd wrapper script ($VERSION)"
+		echo "Usage: $0 <options>"
+		echo "Options are:"
+		echo "   -c <file>  config file to use [default: $config]"
+		echo "   -D         Show debug output"
+		echo "   -b         Push into background"
+		echo "   -h         Show this help"
+		exit 0
+	fi
+	shift
+done
+
+Signal()
+{
+	if [ "`echo -n $pids`" != "" ]; then
+		kill -2 $pids
+	fi
+	shutdown=1
+	trap - SIGHUP
+	trap - SIGINT
+	trap - SIGQUIT
+	trap - SIGTERM
+}
+
+trap Signal SIGHUP
+trap Signal SIGINT
+trap Signal SIGQUIT
+trap Signal SIGTERM
+
+if [ -e "$config" ]; then
+	c="`sed -e '/^#/d;/^[ ]*$/d;s/^\([^ \t][^ \t]*\)[ \t][ \t]*\(.*\)$/\1 \2/' \"$config\"`"
+	while read a b; do
+		if [ -n "$a" -a -x "${Bin}/${a}" ]; then
+			programs="$programs $a"
+			configs[$a]="$b"
+		fi
+	done <<<"$c"
+else
+	programs="router sm c2s s2s"
+	for job in programs; do
+		configs[$job]="${config_dir}/${job}.xml"
+	done
+fi
+
+if [ "$debug" != "0" ]; then
+	echo "jabberd version(${VERSION}) config_dir(${config_dir})"
+fi
+
+for job in $programs; do
+	D=""
+	if [ "$debug" != "0" ]; then
+		D="-D"
+	fi
+	${Bin}/${job} -c ${configs[$job]} $D &
+	p="$!"
+	pids="$pids $p"
+	pidname[$p]="$job"
+done
+
+if [ "$daemon" != "0" -a "$debug" == "0" ]; then
+	echo "$0: daemons running"
+else
+	if [ "$daemon" != "0" ]; then
+		echo "$0: Ignoring -b (daemon mode) because of -D (debug mode)"
+	fi
+
+	while [ "$shutdown" == "0" ]; do
+		for p in $pids; do
+			if [ ! -d "/proc/$p" ]; then
+				echo "ERROR: ${pidname[$p]} pid $p missing. Shutting down server."
+				break 2
+			fi
+		done
+		sleep 1
+	done
+	trap - SIGHUP
+	trap - SIGINT
+	trap - SIGQUIT
+	trap - SIGTERM
+
+	if [ "`echo -n $pids`" != "" ]; then
+		echo "sending SIGTERM to pids`for p in $pids; do echo -n \" $p ${pidname[$p]}\"; done`"
+		kill -15 $pids 2>/dev/null
+	fi
+
+	# give processes time to exit
+	sleep 1
+
+	for p in $pids; do
+		if [ -d "/proc/$p" ]; then
+			echo "process did not shut down - sending SIGKILL to pid $p"
+			kill -9 $p
+		fi
+	done
+fi

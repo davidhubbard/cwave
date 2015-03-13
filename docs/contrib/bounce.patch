@@ -1,0 +1,40 @@
+Index: s2s/main.c
+===================================================================
+--- s2s/main.c	(revision 29)
++++ s2s/main.c	(revision 30)
+@@ -850,6 +852,7 @@
+                 xhash_iter_get(s2s->out_host, NULL, xhv.val);
+                 if(conn) {
+                     sx_error(conn->s, stream_err_SYSTEM_SHUTDOWN, "s2s shutdown");
++                    out_bounce_conn_queues(conn, stanza_err_SERVICE_UNAVAILABLE);
+                     sx_close(conn->s);
+                 }
+             } while(xhash_iter_next(s2s->out_host));
+@@ -859,6 +862,7 @@
+                 xhash_iter_get(s2s->out_dest, NULL, xhv.val);
+                 if(conn) {
+                     sx_error(conn->s, stream_err_SYSTEM_SHUTDOWN, "s2s shutdown");
++                    out_bounce_conn_queues(conn, stanza_err_SERVICE_UNAVAILABLE);
+                     sx_close(conn->s);
+                 }
+             } while(xhash_iter_next(s2s->out_dest));
+@@ -869,6 +873,7 @@
+             xhash_iter_get(s2s->in, NULL, xhv.val);
+             if(conn) {
+                 sx_error(conn->s, stream_err_SYSTEM_SHUTDOWN, "s2s shutdown");
++                out_bounce_conn_queues(conn, stanza_err_SERVICE_UNAVAILABLE);
+                 sx_close(conn->s);
+             }
+         } while(xhash_iter_next(s2s->in));
+@@ -876,8 +881,10 @@
+     if(xhash_iter_first(s2s->in_accept))
+         do {
+             xhash_iter_get(s2s->in_accept, NULL, xhv.val);
+-            if(conn)
++            if(conn) {
++                out_bounce_conn_queues(conn, stanza_err_SERVICE_UNAVAILABLE);
+                 sx_close(conn->s);
++            }
+         } while(xhash_iter_next(s2s->in_accept));
+ 
+ 
